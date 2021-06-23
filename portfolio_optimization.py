@@ -33,9 +33,24 @@ class portfolio_optimization:
 
         if model_type == 'OLS':
             # implement Ordinary Least Square
+            x = factReturns.copy()
 
-            self.Q =
-            self.mu =
+            # Add the constant line
+            X = x.insert(0,'constant',np.ones(1))
+            # Optimize the reisudals
+            B = np.linalg.pinv(X.T.dot(X)).dot(X.T).dot(returns)
+            # Calculate the residuals
+            e = returns.values - X.T.dot(B)
+            # Calculate the variance of residuals
+            ve = e.T.dot(e)/(X.shape[0]-X.shape[1]-1)
+            # The vector of expected asset return
+            f = factReturns.mean()
+            _f = f.copy().insert(0, 'constant', np.ones(1))
+            # Calculate the Factor Covariance matrix
+            F = factReturns.cov()
+
+            self.Q =  np.delete(B,0,axis=1).T.dot(F).dot(np.delete(B,0,axis=1)) + np.diag(np.diag(ve))
+            self.mu = B.T.dot(_f)
 
         elif model_type == 'FF':
             # implement Fama French
