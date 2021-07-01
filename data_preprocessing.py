@@ -19,14 +19,20 @@ etf = pd.read_csv('list_etf.csv')
 list_etf = list(etf['TICKER'].values)
 
 # Add currencies to the list
-list_etf += ["CNY=X", "BRL=X", "ZAR=X", "RUB=X", "EUR=X", "JPY=X", "MXN=X"]
+currs_list = ["CNY=X", "BRL=X", "ZAR=X", "RUB=X", "EUR=X", "JPY=X", "MXN=X"]
+list_etf += currs_list
 
+
+tick_names = []
 
 # Create a dictionary with all the necessary information
 prices_dict = {} 
 for i in range(len(list_etf)):
-    prices_dict[list_etf[i]] = yf.Ticker(list_etf[i]).history(period="max")
+    etf = yf.Ticker(list_etf[i])
+    prices_dict[list_etf[i]] = etf.history(period="max")
     
+    #if list_etf[i] not in currs_list:
+    #    tick_names.append([list_etf[i], etf.info['longName']])
 
 
 # Format nicely and add column names
