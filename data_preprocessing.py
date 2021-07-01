@@ -12,11 +12,14 @@ __file__ = 'data_preprocessing.py'
 os.getcwd()
 
 # Change directory
-#os.chdir('/Users/lucaskrenn/Documents/MMF2025H-Risk Management Laboratory/Global_macro_portfolio')
+os.chdir('/Users/lucaskrenn/Documents/MMF2025H-Risk Management Laboratory/Global_macro_portfolio')
 
 # Read in the csv of ETFs
 etf = pd.read_csv('list_etf.csv')
-list_etf = etf['TICKER'].values
+list_etf = list(etf['TICKER'].values)
+
+# Add currencies to the list
+list_etf += ["CNY=X", "BRL=X", "ZAR=X", "RUB=X", "EUR=X", "JPY=X", "MXN=X"]
 
 
 # Create a dictionary with all the necessary information
