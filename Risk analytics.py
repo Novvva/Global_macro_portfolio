@@ -83,13 +83,3 @@ class scenario_analysis:
 
     def correlation_switch(self):
         pass
-
-
-
-
-
-
-
-
-
-
