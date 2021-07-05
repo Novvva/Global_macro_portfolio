@@ -15,8 +15,8 @@ os.getcwd()
 os.chdir('/Users/lucaskrenn/Documents/MMF2025H-Risk Management Laboratory/Global_macro_portfolio')
 
 # Read in the csv of ETFs
-etf = pd.read_csv('list_etf.csv')
-list_etf = list(etf['TICKER'].values)
+etf = pd.read_csv('USA_ETFs.csv')
+list_etf = list(etf['Ticker'].values)
 
 # Add currencies to the list
 currs_list = ["CNY=X", "BRL=X", "ZAR=X", "RUB=X", "EUR=X", "JPY=X", "MXN=X"]
