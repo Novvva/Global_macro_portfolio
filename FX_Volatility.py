@@ -32,18 +32,22 @@ class option_val:
         self.r = r
         self.q = q
         self.sigma = sigma
-        self.dp = (np.log(S/K) + (r-q+0.5*sigma**2)*tau ) / (sigma*np.sqrt(tau))
-        self.dm = (np.log(S/K) + (r-q-0.5*sigma**2)*tau ) / (sigma*np.sqrt(tau))
+        if self.tau <=0 :
+            self.dp = 0
+            self.dm = 0
+        else: 
+            self.dp = (np.log(S/K) + (r-q+0.5*sigma**2)*tau ) / (sigma*np.sqrt(tau))
+            self.dm = (np.log(S/K) + (r-q-0.5*sigma**2)*tau ) / (sigma*np.sqrt(tau))
         
     def price(self):
         if self.type == 'Call':
             if self.tau == 0:
-                price = self.S - self.K
+                price = np.maximum(self.S - self.K,0)
             else:
                 price = self.S*np.exp(-self.q*self.tau)*norm.cdf(self.dp) - self.K* np.exp(-self.r*self.tau)* norm.cdf(self.dm)
         else:
             if self.tau == 0:
-                price = self.K - self.S 
+                price = np.maximum(self.K - self.S,0)
             else:
                 price = self.K*np.exp(-self.r*self.tau)*norm.cdf(-self.dm) - self.S * norm.cdf(-self.dp)*np.exp(-self.q*self.tau)
         return price
@@ -128,9 +132,12 @@ class vol_surface:
         F = lambda h : get_delta(fwd_aux, h, tenor, self.get_vol(h,tenor)) - delta/100
         y = newton_krylov(F,self.spot)
         return y
+    
+    def get_forward(self,tenor):
+        return int_lin(self.terms,self.forwards,tenor)
 
 # Strategy to get series of P&L and sensitivities 
-# Inputs series of: Vol_data(spot,fwds,ATM,RR,BF), Risk-Free, start-date, maturity date, Bid-offer spread,...
+# Inputs series of: Vol_data(spot,fwds,ATM,RR,BF), Risk-Free rete, start-date, maturity date, Bid-offer spread,...
 # ...,strategy (integer from 1 to 5), available USD cash for buying options
 # OUTPUT: DataFrame with option's market value, strategy pnl, options sensitivies (delta, gamma, vega, theta) 
 class performe:
@@ -146,7 +153,8 @@ class performe:
         self.rfr = rfr[(self.start<=rfr.index)&(rfr.index<=self.end)]
         self.bos = bid_offer_spread
         self.strategy = strategy
-        self.cash = initial_cash 
+        self.cash = initial_cash
+        self.id = str(vol_data.columns[0][0:6])
         # Is USD the strong currency 
         if vol_data.columns[0][0:3] == 'USD':
             self.aux = 1
@@ -174,9 +182,14 @@ class performe:
         # Get initial interest rates (Local & foreign) (PUT SOME CONDITION FOR WHEN USD IS LOCAL????)
         rfr0 = self.rfr[0]
         fwd0 = self.vol_0.get_forward(self.tenor)
-        rf0 = np.log(1+rfr0*self.tenor)/self.tenor
-        rl0 = np.log(fwd0 * np.exp(rf0*self.tenor) / v0[0])/self.tenor
-        # Calculate strategy price (IS IT IN LOCAL CURRENCY??????)
+        # if USD rate is the foreign currency
+        if self.aux == 1:
+            rf0 = np.log(1+rfr0*self.tenor)/self.tenor
+            rl0 = np.log(fwd0 * np.exp(rf0*self.tenor) / v0[0])/self.tenor
+        else: # if USD rate is the local currency
+            rl0 = np.log(1+rfr0*self.tenor)/self.tenor
+            rf0 = np.log(v0[0] * np.exp(rl0*self.tenor)/ fwd0)/self.tenor
+        # Calculate strategy price
         if strategy == 3: 
             self.premium = 0
             self.notional = 0 
@@ -186,7 +199,7 @@ class performe:
             self.opt1 = option_val(self.type, v0[0], self.strikes[0], self.tenor, rl0, rf0, v1 + self.bos/100)
             self.opt2 = option_val(self.type, v0[0], self.strikes[1], self.tenor, rl0, rf0, v2) 
             self.premium = (self.opt1.price() - self.opt2.price())/ v0[0] # Premium in strong currency with 1 unit of notional
-            if self.aux == 0:
+            if self.aux == 0: # Convert cash to strong currency if its not in strong currency
                 self.cash = self.cash / v0[0] 
             self.notional = self.cash / self.premium # Its in strong currency 
             self.vega_init = self.opt1.vega() * self.notional / v0[0] # in strong currency
@@ -198,7 +211,10 @@ class performe:
         pnl['borrow_rate'] = self.rfr + .01
         pnl['spot'] = self.spot
         if self.strategy == 3:
-            pnl[['mv','premium','pnl','delta','gamma','vega','theta']] = 0
+            pnl[['mv','premium',self.id,'delta','gamma','vega','theta']] = 0
+            pnl.columns = ['borrow_rate',self.id+'_spot',self.id+'_premium',self.id+'_mv',self.id+'_pnl',\
+                          self.id+'_delta',self.id+'_gamma',self.id+'_vega',self.id+'_theta']
+            pnl.drop(['borrow_rate'], axis=1,inplace=True)
             return pnl
         else: 
             if self.aux == 1:
@@ -239,8 +255,8 @@ class performe:
                 # Calculate value of strategy 
                 opt1 = option_val(self.type, v0[0], self.strikes[0], new_tenor, r_l, r_f, vol.get_vol(self.strikes[0],new_tenor))
                 opt2 = option_val(self.type, v0[0], self.strikes[1], new_tenor, r_l, r_f, vol.get_vol(self.strikes[1],new_tenor))
-                pnl['mv'].iloc[i+1] = (opt1.price() - opt2.price()) * self.notional / v0[0]
-                i
+                pnl['mv'].iloc[i+1] = (opt1.price() - opt2.price()) * self.notional / v0[0] # Check this spot is not
+                #i
                 if self.aux == 1:
                     pnl['pnl'].iloc[i+1] = pnl['mv'].iloc[i+1] - pnl['premium'].iloc[i+1]
                 else:
@@ -256,6 +272,9 @@ class performe:
                 pnl['gamma'] = pnl['gamma'] * pnl['spot']
                 pnl['vega'] = pnl['vega'] * pnl['spot']
                 pnl['theta'] = pnl['vega'] * pnl['spot']
+            pnl.columns = ['borrow_rate',self.id+'_spot',self.id+'_premium',self.id+'_mv',self.id+'_pnl',\
+                          self.id+'_delta',self.id+'_gamma',self.id+'_vega',self.id+'_theta']
+            pnl.drop(['borrow_rate'], axis=1,inplace=True)
             return pnl
         
 # Process vol_data
@@ -266,7 +285,7 @@ def clean_vol_date(allbase):
     allbase.set_index('DATE',inplace=True)
     # Create the currency list 
     ccy = [x[0:6] for x in allbase.columns]
-    ccy = set(ccy)
+    ccy = list(set(ccy))
     # create one dataframe for each currency 
     for i in range(len(ccy)):
         globals()[str(list(ccy)[i])] = pd.DataFrame()
