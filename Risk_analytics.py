@@ -23,16 +23,17 @@ class risk:
     def __init__(self,factReturns,weight,num):
         self.weight = weight
         self.mean = factReturns.mean()
-        self.variance = np.sqrt(np.dot(weight.T,np.dot(factReturns.cov(),weight)))
-        self.num = 15
-        self.factReturns = factReturns
+        self.cov = factReturns.cov()
+        self.variance = np.sqrt(np.dot(weight.T, np.dot(factReturns.cov, weight)))
+        self.num = num
+        self.returns = factReturns
 
     # MC_multivariate normal structure VaR&CVaR calculation
     def VaR_CVaR_MC(self,numTrials,alpha=5):
 
         # We assume the underlying ETF distribution follow a multivariate-normal structure with corresponding correlation matrix.
-        factorCov = self.factReturns.cov()
-        factormean = self.mean
+        _cov = self.returns.cov()
+        _mean= self.mean
 
         trialReturns = []
         for i in range(0,numTrials):

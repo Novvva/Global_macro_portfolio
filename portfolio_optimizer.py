@@ -10,11 +10,7 @@ class portfolio_optimizer:
     This class is aimed to apply various optimization algorithms to find optimal weight of our Global macro portfolios.
 
     =====Attributes=====
-    pct_full_portfolio
-
-    dollar_full_portfolio
-
-    PnL
+    semiannual: dataframe of semiannual returns for each ETFs
     """
 
     def __init__(self, returns):
