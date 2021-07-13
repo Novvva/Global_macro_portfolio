@@ -24,16 +24,16 @@ class risk:
         self.weight = weight
         self.mean = factReturns.mean()
         self.cov = factReturns.cov()
-        self.variance = np.sqrt(np.dot(weight.T, np.dot(factReturns.cov, weight)))
+        self.variance = np.sqrt(np.dot(weight.T, np.dot(factReturns.cov(), weight)))
         self.num = num
-        self.returns = factReturns
+        self.factReturns = factReturns
 
     # MC_multivariate normal structure VaR&CVaR calculation
     def VaR_CVaR_MC(self,numTrials,alpha=5):
 
         # We assume the underlying ETF distribution follow a multivariate-normal structure with corresponding correlation matrix.
-        _cov = self.returns.cov()
-        _mean= self.mean
+        factorCov = self.factReturns.cov()
+        factormean= self.mean
 
         trialReturns = []
         for i in range(0,numTrials):
@@ -100,11 +100,12 @@ class risk:
         drawdown = (wealth_index - previous_peaks)/previous_peaks
         return drawdown.min()
 
-    def sharpe_ratio(self,rf):
-        _portfolio_return = self.factReturns.mul(self.weight,axis=1).apply(lambda x: x.sum(),axis=1) - rf
-        wealth_index = (1+_portfolio_return).cumprod()
+    def sharpe_ratio(self):
+        _portfolio_return = self.factReturns.mul(self.weight,axis=1).sum(axis=1).cumsum()[-1]       
         _portfolio_vol = self.factReturns.mul(self.weight,axis=1).apply(lambda x: x.sum(),axis=1).std()
-        return wealth_index[-1]/_portfolio_vol
+        _sharpe_ratio = _portfolio_return/_portfolio_vol
+        _real_ratio = _sharpe_ratio*np.sqrt(2)
+        return _real_ratio
 
 
 class scenario_analysis:
