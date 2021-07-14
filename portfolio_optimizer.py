@@ -12,17 +12,36 @@ class portfolio_optimizer:
     This class is aimed to apply various optimization algorithms to find optimal weight of our Global macro portfolios.
 
     =====Attributes=====
-    semiannual: dataframe of semiannual returns for each ETFs
+
+    semiannual: dictionary of semiannual returns dataframes for each ETFs in each semi annual periods.
+
     """
 
     def __init__(self, returns):
 
         self.semiannual = returns
 
-    def portfolio_simulator(self, initial_capital, riskfree, top_cor, cutoff,VaRcutoff, optimization_type):
+    def portfolio_simulator(self, initial_capital, riskfree, top_cor, cutoff, VaRcutoff, optimization_type, benchmark=None):
+        """
+        :param initial_capital: the assumed initial capital amount for our portfolio.
+        :param riskfree: a dataframe of 3-m US treasury yield in each time.
+        :param top_cor: top cutoff number of ETFs with lowest correlations.
+        :param cutoff: the number of ETFs we want to include in the portfolio.
+        :param VaRcutoff: the VaR threshold that is used to determine the scaling factor in each small period.
+        :param optimization_type: four different types available: 'MVO', 'Risk parity', 'Sharpe ratio maximization',
+                                                                  'Equally weighted'.
+        :param benchmark: the benchmark excess returns used for MVO (default=None).
+        :return: dollar_full_portfolio: dollar amount for each ETFs in entire portfolio.
+                 PnL: Profit and loss.
+                 USD_risk_profile: risk metrics for US ETFs.
+                 CAD_risk_profile: risk metrics for CA ETFs.
+                 overall_risk_profile: risk metrics for entire portfolio.
+                 max_drawdown: max drawdown calculation.
+        """
+        '===================================Optimization Algorithms===================================================='
 
-        # MVO
-        def MVO(portfolio, targetRet=None):
+        '============Mean Variance Optimization============'
+        def MVO(portfolio, benchmark=None):
             """
             Perform Mean Variance Optimization.
             :return: weights of assets
@@ -32,8 +51,10 @@ class portfolio_optimizer:
 
             # total number of assets
             n = _cov.shape[0]
-            if targetRet is None:
+            if benchmark is None:
                 targetRet = np.mean(_mu)
+            else:
+                targetRet = benchmark.mean()
 
             def f(x, Q):
                 func = np.matmul(np.matmul(x, Q), x.T)
@@ -63,8 +84,12 @@ class portfolio_optimizer:
 
             return res.x
 
-        # Risk Parity:
+        '============Risk parity============'
         def Risk_parity(portfolio, kappa=5):
+            """
+            Perform Risk parity optimization. (Equal Risk Attribution)
+            :return: Weights of assets.
+            """
             # min   (1/2) * (x' * Q * x) - kappa * sum_{i=1}^n ln(x_i)
             # s.t.  x >= 0
 
@@ -75,6 +100,7 @@ class portfolio_optimizer:
             # parameters for nonlinear program
             eps = 1e-3
 
+            # avoid log(0)
             def safe_log(x):
                 if x > eps:
                     return math.log(x)
@@ -101,9 +127,11 @@ class portfolio_optimizer:
 
             return res.x / np.sum(res.x)
 
-        # Maximum Sharpe Ratio Portfolio
+        '============Maximum Sharpe Ratio============'
         def sharpe_ratio_maximization(portfolio):
-
+            """
+            Perform Sharpe Ratio Maximization.
+            """
             def sharpe_ratio_calculation(w, _return, _cov):
                 return - _return.mul(w, axis=1).sum(axis=1).cumsum()[-1] / np.sqrt(np.dot(w.T, np.dot(_cov, w)))
 
@@ -115,10 +143,25 @@ class portfolio_optimizer:
                                constraints=constraints, bounds=tuple((0, 1) for x in range(n)))
             return outcome.x
 
+        '===================================Portfolio Rebalance Part==================================================='
         # Exposure_controlling_process.
-        def risk_mapping(VaR95_quantile, VaR99_quantile, CVaR95_quantile, CVaR99_quantile, VaR95, VaR99, CVaR95,CVaR99):
+        def risk_mapping(VaR95_quantile, VaR99_quantile, CVaR95_quantile, CVaR99_quantile, VaR95, VaR99, CVaR95, CVaR99):
+            """
+            Calculate the scaling factors to adjust the exposures when huge VaR occurs.
+            :param VaR95_quantile: predefined 95th VaR cutoff.
+            :param VaR99_quantile: predefined 99th VaR cutoff.
+            :param CVaR95_quantile: predefined 95th cVaR cutoff.
+            :param CVaR99_quantile: predefined 99th cVaR cutoff.
+            :param VaR95: the last period 95th VaR of our portfolio.
+            :param VaR99: the last period 99th VaR of our portfolio.
+            :param CVaR95: the last period 95th cVaR of our portfolio.
+            :param CVaR99: the last period 99th cVaR of our portfolio.
+            :return: a exposure scaling factor.
+            """
             _scaling = 1
             indicator1, indicator2, indicator3, indicator4 = abs(VaR95) > abs(VaR95_quantile), abs(VaR99) > abs(VaR99_quantile), abs(CVaR95) > abs(CVaR95_quantile), abs(CVaR99) > abs(CVaR99_quantile)
+
+            # rescale if any metric is higher than threshold.
             if indicator1:
                 _scaling *= VaR95_quantile / VaR95
             if indicator2:
@@ -137,37 +180,47 @@ class portfolio_optimizer:
 
         # dataframes to store the portfolio info
         dollar_full_portfolio = pd.DataFrame()
-        pct_full_portfolio = pd.DataFrame()
-        USD_PnL = {}
-        CAD_PnL = {}
         PnL = {}
+
+        # initialize scaling factor
         _scalingfactor = 1
-        
+
+        # dataframes to store portfolio risk profiles
         USD_risk_profile = pd.DataFrame()
         CAD_risk_profile = pd.DataFrame()
         overall_risk_profile = pd.DataFrame()
-        
 
         for i in range(2, len(self.semiannual.keys())):
 
             # Calculate the optimal weights
 
-            # First period correltion is for next period.
-            usd = self.semiannual[i - 1][top_cor[i][:cutoff]].subtract(riskfree['RFR'], axis=0)[
-                  self.semiannual[i - 1][top_cor[i][:cutoff]].index[0]:self.semiannual[i - 1][top_cor[i][:cutoff]].index[-1]]
-            cad = self.semiannual[i - 1][top_cor[i][cutoff:]].subtract(riskfree['RFR'], axis=0)[
-                  self.semiannual[i - 1][top_cor[i][cutoff:]].index[0]:self.semiannual[i - 1][top_cor[i][cutoff:]].index[-1]].fillna(0)
+            # First period correlation is used to calculate optimal weights for next period.
+            times_usd = self.semiannual[i - 1][top_cor[i][:cutoff]].index
+            times_cad = self.semiannual[i - 1][top_cor[i][cutoff:]].index
+            usd = self.semiannual[i - 1][top_cor[i][:cutoff]].subtract(riskfree['RFR'], axis=0)[times_usd[0]:times_usd[-1]]
+            cad = self.semiannual[i - 1][top_cor[i][cutoff:]].subtract(riskfree['RFR'], axis=0)[times_cad[0]:times_cad[-1]].fillna(0)
+            if benchmark is not None:
+                benchmark_semi = benchmark[times_usd[0]:times_usd[-1]]
+            else:
+                benchmark_semi = None
 
             # fit optimization based on specified type
             if optimization_type == 'MVO':
-                usdweights = MVO(usd)
-                cadweights = MVO(cad)
+                if benchmark_semi is None:
+                    usdweights = MVO(usd)
+                    cadweights = MVO(cad)
+                else:
+                    usdweights = MVO(usd, benchmark_semi)
+                    cadweights = MVO(cad, benchmark_semi)
             elif optimization_type == 'Risk parity':
                 usdweights = Risk_parity(usd)
                 cadweights = Risk_parity(cad)
             elif optimization_type == 'Sharpe ratio maximization':
                 usdweights = sharpe_ratio_maximization(usd)
                 cadweights = sharpe_ratio_maximization(cad)
+            elif optimization_type == 'Equally weighted':
+                usdweights = np.repeat(1 / cutoff, cutoff)
+                cadweights = np.repeat(1 / cutoff, cutoff)
             else:
                 raise Exception('Type not available.')
 
@@ -175,39 +228,35 @@ class portfolio_optimizer:
             usdreturns = self.semiannual[i][top_cor[i][:cutoff]]
             cadreturns = self.semiannual[i][top_cor[i][cutoff:]]
 
-
-            # Risk calculation  # monthly reweighting & adjusting cash ammount
-            dates_to_split = pd.date_range(usdreturns.index[0],usdreturns.index[-1],freq = 'M')
+            '========================Monthly re-weighting and cash adjustments using risk metrics===================='
+            # monthly separate the data
+            dates_to_split = pd.date_range(usdreturns.index[0], usdreturns.index[-1], freq='M')
             monthly_usdreturns = {}
             monthly_cadreturns = {}
-
             for j in range(len(dates_to_split)-1):
-                monthly_usdreturns[j] = usdreturns.loc[dates_to_split[j]:dates_to_split[j+1],:]
-                monthly_cadreturns[j] = cadreturns.loc[dates_to_split[j]:dates_to_split[j+1],:]
-
+                monthly_usdreturns[j] = usdreturns.loc[dates_to_split[j]:dates_to_split[j+1], :]
+                monthly_cadreturns[j] = cadreturns.loc[dates_to_split[j]:dates_to_split[j+1], :]
 
             usdpnl = {}
             cadpnl = {}
             pnl = {}
-            
-            _USDcapital = USDcapital*_scalingfactor
-            _CADcapital = CADcapital *_scalingfactor
-            _USDcapital  = USDcapital* _scalingfactor
-            _CADcapital  = CADcapital* _scalingfactor
+
             usd_portfolio_return = monthly_usdreturns[0].mul(usdweights, axis=1)
             cad_portfolio_return = monthly_cadreturns[0].mul(cadweights, axis=1)
+            # remove outliers
             usd_portfolio_return[usd_portfolio_return.values > 100] = 0
             cad_portfolio_return[cad_portfolio_return.values > 100] = 0
-            portfolio_return = pd.concat([usd_portfolio_return, cad_portfolio_return], axis=1, ignore_index=True)
-            pct_full_portfolio = pd.concat([pct_full_portfolio, portfolio_return])
+            portfolio_return = pd.concat([usd_portfolio_return, cad_portfolio_return], axis=1)
             dollar_full_portfolio = pd.concat([dollar_full_portfolio, portfolio_return])
-            usdpnl[0] = usd_portfolio_return.sum(axis=1)* _USDcapital
-            cadpnl[0] = cad_portfolio_return.sum(axis=1)* _CADcapital
-            pnl[0] = usdpnl[0]+cadpnl[0]
+            usdpnl[0] = usd_portfolio_return.sum(axis=1) * USDcapital
+            cadpnl[0] = cad_portfolio_return.sum(axis=1) * CADcapital
+            pnl[0] = usdpnl[0] + cadpnl[0]
             capital += (pnl[0].cumsum()[-1] - pnl[0].cumsum()[0])
-                                  
-            
-            for j in range(1,len(dates_to_split)):
+
+            # calculate risk metrics for each month of this sub-period.
+            for j in range(1, len(dates_to_split)):
+
+                # A series of risk metrics referring back to the Risk_analytics module.
                 _USDrisk = Risk_analytics.risk(monthly_usdreturns[j-1], usdweights, cutoff)
                 _CADrisk = Risk_analytics.risk(monthly_cadreturns[j-1], cadweights, cutoff)
                 _USDVaR95, _USDCVaR95 = _USDrisk.hist_var(5)
@@ -222,19 +271,23 @@ class portfolio_optimizer:
                 _CADVaR99 *= CADcapital
                 _CADCVaR95 *= CADcapital
                 _CADCVaR99 *= CADcapital
-                _totalVaR95 = _USDVaR95+ _CADVaR95
-                _totalVaR99 = _USDVaR95+ _CADVaR95
-                _totalCVaR95 = _USDCVaR95+ _CADCVaR95
-                _totalCVaR99 = _USDCVaR99+ _CADCVaR99
+                _totalVaR95 = _USDVaR95 + _CADVaR95
+                _totalVaR99 = _USDVaR95 + _CADVaR95
+                _totalCVaR95 = _USDCVaR95 + _CADCVaR95
+                _totalCVaR99 = _USDCVaR99 + _CADCVaR99
 
                 # Scaling_factor: VaR95 cutoff, VaR 99 cutoff, CVaR95 cutoff, CVaR99 cutoff.
-                _scalingfactor = risk_mapping(VaRcutoff['VaR95'],VaRcutoff['VaR99'],VaRcutoff['CVaR95'],VaRcutoff['CVaR99'],_totalVaR95,_totalVaR99,_totalCVaR95,_totalCVaR99)
-                
-                if j == len(dates_to_split)-1:
+                _scalingfactor = risk_mapping(VaRcutoff['VaR95'], VaRcutoff['VaR99'], VaRcutoff['CVaR95'],
+                                              VaRcutoff['CVaR99'], _totalVaR95, _totalVaR99, _totalCVaR95,
+                                              _totalCVaR99)
+
+                # end when reaching month end
+                if j == len(dates_to_split) - 1:
                     break
-                
-                _USDcapital  = USDcapital* _scalingfactor
-                _CADcapital  = CADcapital* _scalingfactor
+
+                # recalculate PnL using rescaled capital
+                _USDcapital = USDcapital * _scalingfactor
+                _CADcapital = CADcapital * _scalingfactor
 
                 usd_portfolio_return = monthly_usdreturns[j].mul(usdweights, axis=1)
                 cad_portfolio_return = monthly_cadreturns[j].mul(cadweights, axis=1)
@@ -242,23 +295,24 @@ class portfolio_optimizer:
                 usd_portfolio_return[usd_portfolio_return.values > 100] = 0
                 cad_portfolio_return[cad_portfolio_return.values > 100] = 0
 
-                portfolio_return = pd.concat([usd_portfolio_return, cad_portfolio_return], axis=1, ignore_index=True)
-                pct_full_portfolio = pd.concat([pct_full_portfolio, portfolio_return])
+                portfolio_return = pd.concat([usd_portfolio_return, cad_portfolio_return], axis=1)
                 dollar_full_portfolio = pd.concat([dollar_full_portfolio, portfolio_return])
 
                 # Partially PnL calculation
-                usdpnl[j] = usd_portfolio_return.sum(axis=1)* _USDcapital
-                cadpnl[j] = cad_portfolio_return.sum(axis=1)* _CADcapital
+                usdpnl[j] = usd_portfolio_return.sum(axis=1) * USDcapital
+                cadpnl[j] = cad_portfolio_return.sum(axis=1) * CADcapital
                 pnl[j] = usdpnl[j]+cadpnl[j]
+
+                # calculate the capital holdings at each period end
                 capital += (pnl[j].cumsum()[-1] - pnl[j].cumsum()[0])
 
-
-            # reconcil the PnL
+            # reconcil the PnL 50/50 at each semi annual start
+            # Note: we don't need to do rebalancing operation. Just reallocate the capital is enough.
             PnL[i] = pd.concat(pnl)
             USDcapital = capital/2
             CADcapital = capital/2
 
-
+            '================================Semi-annual risk metrics access==========================================='
             # Calculate the overall risk
             _USDrisk = Risk_analytics.risk(usdreturns, usdweights, cutoff)
             _CADrisk = Risk_analytics.risk(cadreturns, cadweights, cutoff)
@@ -292,24 +346,26 @@ class portfolio_optimizer:
                                    'CVaR 95%': [_USDCVaR95 + _CADCVaR95],
                                    'CVaR 99%': [_USDCVaR99 + _CADCVaR99]}
 
+            # store risk metrics into dataframes
             _USDriskprofile = pd.DataFrame.from_dict(_USDriskprofile)
             _CADriskprofile = pd.DataFrame.from_dict(_CADriskprofile)
             _overall_risk_profile = pd.DataFrame.from_dict(_overallriskprofile)
+
             USD_risk_profile = pd.concat([USD_risk_profile, _USDriskprofile])
             CAD_risk_profile = pd.concat([CAD_risk_profile, _CADriskprofile])
             overall_risk_profile = pd.concat([overall_risk_profile, _overall_risk_profile])
 
-            # Note: we don't need to do rebalancing operation. Just reallocate the capital is enough.
+        PnL = pd.concat(PnL).droplevel(level=[0, 1])
 
         USD_risk_profile.set_index('Period', inplace=True)
         CAD_risk_profile.set_index('Period', inplace=True)
         overall_risk_profile.set_index('Period', inplace=True)
 
-        # max drawdown:
-        ts = pd.concat(PnL).cumsum()
+        # max drawdown calculation:
+        ts = PnL.cumsum()
         previous_peaks = ts.cummax()
         drawdown = (ts - previous_peaks) / previous_peaks
 
         max_drawdown = f'{drawdown.min()*100}%'
 
-        return pct_full_portfolio, dollar_full_portfolio, PnL, USD_risk_profile, CAD_risk_profile, overall_risk_profile, max_drawdown
+        return dollar_full_portfolio, PnL, USD_risk_profile, CAD_risk_profile, overall_risk_profile, max_drawdown
