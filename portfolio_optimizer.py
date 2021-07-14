@@ -19,7 +19,7 @@ class portfolio_optimizer:
 
         self.semiannual = returns
 
-    def portfolio_simulator(self, initial_capital, riskfree, top_cor, cutoff, optimization_type):
+    def portfolio_simulator(self, initial_capital, riskfree, top_cor, cutoff,VaRcutoff, optimization_type):
 
         # MVO
         def MVO(portfolio, targetRet=None):
@@ -115,6 +115,21 @@ class portfolio_optimizer:
                                constraints=constraints, bounds=tuple((0, 1) for x in range(n)))
             return outcome.x
 
+        # Exposure_controlling_process.
+        def risk_mapping(VaR95_quantile, VaR99_quantile, CVaR95_quantile, CVaR99_quantile, VaR95, VaR99, CVaR95,CVaR99):
+            _scaling = 1
+            indicator1, indicator2, indicator3, indicator4 = abs(VaR95) > abs(VaR95_quantile), abs(VaR99) > abs(VaR99_quantile), abs(CVaR95) > abs(CVaR95_quantile), abs(CVaR99) > abs(CVaR99_quantile)
+            if indicator1:
+                _scaling *= VaR95_quantile / VaR95
+            if indicator2:
+                _scaling *= VaR99_quantile / VaR99
+            if indicator3:
+                _scaling *= CVaR95_quantile / CVaR95
+            if indicator4:
+                _scaling *= CVaR99_quantile / CVaR99
+
+            return abs(_scaling)
+
         # 50/50 for US and CA ETF
         USDcapital = initial_capital / 2
         CADcapital = initial_capital / 2
@@ -158,28 +173,92 @@ class portfolio_optimizer:
             usdreturns = self.semiannual[i][top_cor[i][:cutoff]]
             cadreturns = self.semiannual[i][top_cor[i][cutoff:]]
 
-            usd_portfolio_return = usdreturns.mul(usdweights, axis=1)
-            cad_portfolio_return = cadreturns.mul(cadweights, axis=1)
+
+            # Risk calculation  # monthly reweighting & adjusting cash ammount
+            dates_to_split = pd.date_range(usdreturns.index[0],usdreturns.index[-1],freq = 'M')
+            monthly_usdreturns = {}
+            monthly_cadreturns = {}
+
+            for j in range(len(dates_to_split)-1):
+                monthly_usdreturns[j] = usdreturns.loc[dates_to_split[j]:dates_to_split[j+1],:]
+                monthly_cadreturns[j] = cadreturns.loc[dates_to_split[j]:dates_to_split[j+1],:]
+
+
+            usdpnl = {}
+            cadpnl = {}
+            pnl = {}
+            for j in range(0,len(dates_to_split)-1):
+                _USDrisk = Risk_analytics.risk(monthly_usdreturns[j], usdweights, cutoff)
+                _CADrisk = Risk_analytics.risk(monthly_cadreturns[j], cadweights, cutoff)
+                _USDVaR95, _USDCVaR95 = _USDrisk.hist_var(5)
+                _CADVaR95, _CADCVaR95 = _CADrisk.hist_var(5)
+                _USDVaR99, _USDCVaR99 = _USDrisk.hist_var(1)
+                _CADVaR99, _CADCVaR99 = _CADrisk.hist_var(1)
+                _USDVaR95 *= USDcapital
+                _USDVaR99 *= USDcapital
+                _USDCVaR95 *= USDcapital
+                _USDCVaR99 *= USDcapital
+                _CADVaR95 *= CADcapital
+                _CADVaR99 *= CADcapital
+                _CADCVaR95 *= CADcapital
+                _CADCVaR99 *= CADcapital
+                _totalVaR95 = _USDVaR95+ _CADVaR95
+                _totalVaR99 = _USDVaR95+ _CADVaR95
+                _totalCVaR95 = _USDCVaR95+ _CADCVaR95
+                _totalCVaR99 = _USDCVaR99+ _CADCVaR99
+
+                # Scaling_factor: VaR95 cutoff, VaR 99 cutoff, CVaR95 cutoff, CVaR99 cutoff.
+                _scalingfactor = risk_mapping(VaRcutoff['VaR95'],VaRcutoff['VaR99'],VaRcutoff['CVaR95'],VaRcutoff['CVaR99'],_totalVaR95,_totalVaR99,_totalCVaR95,_totalCVaR99)
+                _USDcapital  = USDcapital* _scalingfactor
+                _CADcapital  = CADcapital* _scalingfactor
+
+                usd_portfolio_return = monthly_usdreturns[j].mul(usdweights, axis=1)
+                cad_portfolio_return = monthly_cadreturns[j].mul(cadweights, axis=1)
+
+                usd_portfolio_return[usd_portfolio_return.values > 100] = 0
+                cad_portfolio_return[cad_portfolio_return.values > 100] = 0
+
+                portfolio_return = pd.concat([usd_portfolio_return, cad_portfolio_return], axis=1, ignore_index=True)
+                pct_full_portfolio = pd.concat([pct_full_portfolio, portfolio_return])
+                dollar_full_portfolio = pd.concat([dollar_full_portfolio, portfolio_return])
+
+                # Partially PnL calculation
+                usdpnl[j] = usd_portfolio_return.sum(axis=1)* _USDcapital
+                cadpnl[j] = cad_portfolio_return.sum(axis=1)* _CADcapital
+                pnl[j] = usdpnl[j]+cadpnl[j]
+                capital += (pnl[j].cumsum()[-1] - pnl[j].cumsum()[0])
+
+
+            # reconcil the PnL
+            PnL[i] = pd.concat(pnl)
+            USDcapital = capital/2
+            CADcapital = capital/2
+
+
+            #usd_portfolio_return = usdreturns.mul(usdweights, axis=1)
+            #cad_portfolio_return = cadreturns.mul(cadweights, axis=1)
+
 
             # Remove an outlier
-            usd_portfolio_return[usd_portfolio_return.values > 100] = 0
-            cad_portfolio_return[cad_portfolio_return.values > 100] = 0
+            #usd_portfolio_return[usd_portfolio_return.values > 100] = 0
+            #cad_portfolio_return[cad_portfolio_return.values > 100] = 0
 
             # Portfolio Returns
-            portfolio_return = pd.concat([usd_portfolio_return, cad_portfolio_return], axis=1, ignore_index=True)
+            #portfolio_return = pd.concat([usd_portfolio_return, cad_portfolio_return], axis=1, ignore_index=True)
 
-            pct_full_portfolio = pd.concat([pct_full_portfolio, portfolio_return])
-            dollar_full_portfolio = pd.concat([dollar_full_portfolio, portfolio_return])
+            #pct_full_portfolio = pd.concat([pct_full_portfolio, portfolio_return])
+            #dollar_full_portfolio = pd.concat([dollar_full_portfolio, portfolio_return])
 
             # PnL calculation
-            USD_PnL[i] = usd_portfolio_return.sum(axis=1) * USDcapital
-            CAD_PnL[i] = cad_portfolio_return.sum(axis=1) * CADcapital
-            PnL[i] = USD_PnL[i] + CAD_PnL[i]
-            capital += (PnL[i].cumsum()[-1] - PnL[i].cumsum()[0])
-            USDcapital = capital / 2
-            CADcapital = capital / 2
+            #USD_PnL[i] = usd_portfolio_return.sum(axis=1) * USDcapital
+            #CAD_PnL[i] = cad_portfolio_return.sum(axis=1) * CADcapital
+            #PnL[i] = USD_PnL[i] + CAD_PnL[i]
+            #capital += (PnL[i].cumsum()[-1] - PnL[i].cumsum()[0])
+            #USDcapital = capital / 2
+            #CADcapital = capital / 2
 
-            # Risk calculation
+
+            # Calculate the overall risk
             _USDrisk = Risk_analytics.risk(usdreturns, usdweights, cutoff)
             _CADrisk = Risk_analytics.risk(cadreturns, cadweights, cutoff)
             _USDVaR95, _USDCVaR95 = _USDrisk.hist_var(5)
@@ -194,6 +273,10 @@ class portfolio_optimizer:
             _CADVaR99 *= CADcapital
             _CADCVaR95 *= CADcapital
             _CADCVaR99 *= CADcapital
+            _totalVaR95 = _USDVaR95 + _CADVaR95
+            _totalVaR99 = _USDVaR95 + _CADVaR95
+            _totalCVaR95 = _USDCVaR95 + _CADCVaR95
+            _totalCVaR99 = _USDCVaR99 + _CADCVaR99
 
             _USDriskprofile = {'Period': i, 'VaR 95%': [_USDVaR95], 'VaR 99%': [_USDVaR99],
                                'CVaR 95%': [_USDCVaR95], 'CVaR 99%': [_USDCVaR99],
