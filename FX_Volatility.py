@@ -278,7 +278,7 @@ class performe:
             return pnl
         
 # Process vol_data
-allbase = pd.read_csv('vol_data.csv')
+allbase = pd.read_csv('data/vol_data.csv')
 def clean_vol_date(allbase):
     # Index in datetime format 
     allbase['DATE']=pd.to_datetime(allbase.DATE)
