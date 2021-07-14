@@ -21,7 +21,8 @@ class portfolio_optimizer:
 
         self.semiannual = returns
 
-    def portfolio_simulator(self, initial_capital, riskfree, top_cor, cutoff, VaRcutoff, optimization_type, benchmark=None):
+    def portfolio_simulator(self, initial_capital, riskfree, top_cor, cutoff, VaRcutoff, optimization_type,
+                            benchmark=None, scenario=None):
         """
         :param initial_capital: the assumed initial capital amount for our portfolio.
         :param riskfree: a dataframe of 3-m US treasury yield in each time.
@@ -129,19 +130,37 @@ class portfolio_optimizer:
 
         '============Maximum Sharpe Ratio============'
         def sharpe_ratio_maximization(portfolio):
-            """
-            Perform Sharpe Ratio Maximization.
-            """
-            def sharpe_ratio_calculation(w, _return, _cov):
-                return - _return.mul(w, axis=1).sum(axis=1).cumsum()[-1] / np.sqrt(np.dot(w.T, np.dot(_cov, w)))
 
             _return = portfolio
-            _cov = portfolio.cov()
+            _cov = portfolio.cov().to_numpy()
+            # number of assets
             n = _cov.shape[0]
-            constraints = [{'type': 'eq', 'fun': lambda x: sum(x) - 1}]
-            outcome = minimize(sharpe_ratio_calculation, x0=np.repeat(1 / n, n), args=(_return, _cov),
-                               constraints=constraints, bounds=tuple((0, 1) for x in range(n)))
-            return outcome.x
+
+            # define maximization of Sharpe Ratio using principle of duality
+            def f(x, _return, _cov):
+                mu_p = _return.mul(x, axis=1).sum(axis=1).cumsum()[-1]
+                cov_p = np.sqrt(np.matmul(np.matmul(x, _cov), x.T))
+                func = -(mu_p / cov_p)
+                return func
+
+            # define equality constraint representing fully invested portfolio
+            def constraintEq(x):
+                A = np.ones(x.shape)
+                b = 1
+                constraintVal = np.matmul(A, x.T) - b
+                return constraintVal
+
+            # define bounds and other parameters
+            xinit = np.repeat(1 / n, n)
+            cons = ({'type': 'eq', 'fun': constraintEq})
+            lb = 0
+            ub = 1
+            bnds = tuple([(lb, ub) for x in xinit])
+
+            # invoke minimize solver
+            res = minimize(f, x0=xinit, args=(_return, _cov), method='SLSQP',
+                           bounds=bnds, constraints=cons, tol=10**-3)
+            return res.x
 
         '===================================Portfolio Rebalance Part==================================================='
         # Exposure_controlling_process.
@@ -199,10 +218,25 @@ class portfolio_optimizer:
             times_cad = self.semiannual[i - 1][top_cor[i][cutoff:]].index
             usd = self.semiannual[i - 1][top_cor[i][:cutoff]].subtract(riskfree['RFR'], axis=0)[times_usd[0]:times_usd[-1]]
             cad = self.semiannual[i - 1][top_cor[i][cutoff:]].subtract(riskfree['RFR'], axis=0)[times_cad[0]:times_cad[-1]].fillna(0)
+
             if benchmark is not None:
                 benchmark_semi = benchmark[times_usd[0]:times_usd[-1]]
             else:
                 benchmark_semi = None
+
+            # used for scenario return adjustments
+            if scenario == 'Market crash':
+                sa_us = Risk_analytics.scenario_analysis(usd)
+                usd = sa_us.all_crash()
+
+                sa_ca = Risk_analytics.scenario_analysis(cad)
+                cad = sa_ca.all_crash()
+            elif scenario == 'Random ETF crash':
+                sa_us = Risk_analytics.scenario_analysis(usd)
+                usd = sa_us.random_crash()
+
+                sa_ca = Risk_analytics.scenario_analysis(cad)
+                cad = sa_ca.random_crash()
 
             # fit optimization based on specified type
             if optimization_type == 'MVO':
@@ -368,4 +402,4 @@ class portfolio_optimizer:
 
         max_drawdown = f'{drawdown.min()*100}%'
 
-        return dollar_full_portfolio, PnL, USD_risk_profile, CAD_risk_profile, overall_risk_profile, max_drawdown
+        return dollar_full_portfolio.fillna(0), PnL, USD_risk_profile, CAD_risk_profile, overall_risk_profile, max_drawdown
