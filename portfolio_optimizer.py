@@ -320,8 +320,8 @@ class portfolio_optimizer:
                     break
 
                 # recalculate PnL using rescaled capital
-                _USDcapital = USDcapital * _scalingfactor
-                _CADcapital = CADcapital * _scalingfactor
+                USDcapital = USDcapital * _scalingfactor
+                CADcapital = CADcapital * _scalingfactor
 
                 usd_portfolio_return = monthly_usdreturns[j].mul(usdweights, axis=1)
                 cad_portfolio_return = monthly_cadreturns[j].mul(cadweights, axis=1)
@@ -338,6 +338,8 @@ class portfolio_optimizer:
                 pnl[j] = usdpnl[j]+cadpnl[j]
 
                 # calculate the capital holdings at each period end
+                USDcapital += (usdpnl[j].cumsum()[-1] - usdpnl[j].cumsum()[0])
+                CADcapital += (cadpnl[j].cumsum()[-1] - cadpnl[j].cumsum()[0])
                 capital += (pnl[j].cumsum()[-1] - pnl[j].cumsum()[0])
 
             # reconcil the PnL 50/50 at each semi annual start
