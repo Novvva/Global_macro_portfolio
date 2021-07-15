@@ -209,10 +209,10 @@ class portfolio_optimizer:
         CAD_risk_profile = pd.DataFrame()
         overall_risk_profile = pd.DataFrame()
 
-        for i in range(2, len(self.semiannual.keys())):
+        for i in range(1, len(self.semiannual.keys())):
 
             # Calculate the optimal weights
-
+            
             # First period correlation is used to calculate optimal weights for next period.
             times_usd = self.semiannual[i - 1][top_cor[i][:cutoff]].index
             times_cad = self.semiannual[i - 1][top_cor[i][cutoff:]].index
@@ -264,7 +264,7 @@ class portfolio_optimizer:
 
             '========================Monthly re-weighting and cash adjustments using risk metrics===================='
             # monthly separate the data
-            dates_to_split = pd.date_range(usdreturns.index[0], usdreturns.index[-1], freq='M')
+            dates_to_split = pd.date_range(usdreturns.index[0], usdreturns.index[-1], freq='W')
             monthly_usdreturns = {}
             monthly_cadreturns = {}
             for j in range(len(dates_to_split)-1):
@@ -286,9 +286,11 @@ class portfolio_optimizer:
             cadpnl[0] = cad_portfolio_return.sum(axis=1) * CADcapital
             pnl[0] = usdpnl[0] + cadpnl[0]
             capital += (pnl[0].cumsum()[-1] - pnl[0].cumsum()[0])
+            USDcapital = capital/2
+            CADcapital = capital/2
 
             # calculate risk metrics for each month of this sub-period.
-            for j in range(1, len(dates_to_split)):
+            for j in range(1, len(monthly_usdreturns)):
 
                 # A series of risk metrics referring back to the Risk_analytics module.
                 _USDrisk = Risk_analytics.risk(monthly_usdreturns[j-1], usdweights, cutoff)
@@ -316,12 +318,12 @@ class portfolio_optimizer:
                                               _totalCVaR99)
 
                 # end when reaching month end
-                if j == len(dates_to_split) - 1:
-                    break
-
+                #if j == len(dates_to_split) - 1:
+                #    break
+                    
                 # recalculate PnL using rescaled capital
-                USDcapital = USDcapital * _scalingfactor
-                CADcapital = CADcapital * _scalingfactor
+                _USDcapital = USDcapital * _scalingfactor
+                _CADcapital = CADcapital * _scalingfactor
 
                 usd_portfolio_return = monthly_usdreturns[j].mul(usdweights, axis=1)
                 cad_portfolio_return = monthly_cadreturns[j].mul(cadweights, axis=1)
@@ -333,8 +335,8 @@ class portfolio_optimizer:
                 dollar_full_portfolio = pd.concat([dollar_full_portfolio, portfolio_return])
 
                 # Partially PnL calculation
-                usdpnl[j] = usd_portfolio_return.sum(axis=1) * USDcapital
-                cadpnl[j] = cad_portfolio_return.sum(axis=1) * CADcapital
+                usdpnl[j] = usd_portfolio_return.sum(axis=1) * _USDcapital
+                cadpnl[j] = cad_portfolio_return.sum(axis=1) * _CADcapital
                 pnl[j] = usdpnl[j]+cadpnl[j]
 
                 # calculate the capital holdings at each period end
