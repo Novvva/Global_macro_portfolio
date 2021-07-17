@@ -321,10 +321,6 @@ class portfolio_optimizer:
                 _scalingfactor = risk_mapping(VaRcutoff['VaR95'], VaRcutoff['VaR99'], VaRcutoff['CVaR95'],
                                               VaRcutoff['CVaR99'], _totalVaR95, _totalVaR99, _totalCVaR95,
                                               _totalCVaR99)
-
-                # end when reaching month end
-                #if j == len(dates_to_split) - 1:
-                #    break
                     
                 # recalculate PnL using rescaled capital
                 _USDcapital = USDcapital * _scalingfactor
@@ -345,9 +341,10 @@ class portfolio_optimizer:
                 pnl[j] = usdpnl[j]+cadpnl[j]
 
                 # calculate the capital holdings at each period end
-                USDcapital += (usdpnl[j].cumsum()[-1] - usdpnl[j].cumsum()[0])
-                CADcapital += (cadpnl[j].cumsum()[-1] - cadpnl[j].cumsum()[0])
-                capital += (pnl[j].cumsum()[-1] - pnl[j].cumsum()[0])
+                # we assume we pay 0.05% of the market value at inception as transaction cost
+                USDcapital += (usdpnl[j].cumsum()[-1] - usdpnl[j].cumsum()[0]) * 0.9995
+                CADcapital += (cadpnl[j].cumsum()[-1] - cadpnl[j].cumsum()[0]) * 0.9995
+                capital += (pnl[j].cumsum()[-1] - pnl[j].cumsum()[0]) * 0.9995
 
             # reconcil the PnL 50/50 at each semi annual start
             # Note: we don't need to do rebalancing operation. Just reallocate the capital is enough.
@@ -409,20 +406,22 @@ class portfolio_optimizer:
 
         # max drawdown calculation:
         ts = PnL.cumsum()
-        previous_peaks = ts.cummax()
+        previous_peaks = ts.max()
         drawdown = (ts - previous_peaks) / previous_peaks
 
-        max_drawdown = f'{drawdown.min()*100}%'
+        max_drawdown = f'{round(drawdown.min(), 4)*100}%'
+
         # Sharpe ratio
-        _sharpe = (PnL/initial_capital).subtract(riskfree['RFR'],axis=0).mean() *initial_capital/PnL.std() * np.sqrt(PnL.shape[0])
+        excess_ret = (PnL/initial_capital).subtract(riskfree['RFR'], axis=0)
+        _sharpe = round(excess_ret.mean()/excess_ret.std() * np.sqrt(PnL.shape[0]),4)
         
         # Final weights
         _dict = {}
         for index,etf in enumerate(top_cor[len(top_cor)]):
             if index < cutoff:
-                _dict[etf] = usdweights[index]
+                _dict[etf] = usdweights[index] * 0.5
             else:
-                _dict[etf] = cadweights[index-cutoff]
+                _dict[etf] = cadweights[index-cutoff] * 0.5
         _finalweights = pd.DataFrame.from_dict(_dict,orient='index')
         _finalweights.rename(columns={0: "final_weights"},inplace = True)
 

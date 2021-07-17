@@ -146,7 +146,6 @@ class scenario_analysis:
         return random_crash_returns
 
     #Given that yesterday crash, the market has a moving-average effect to crash together.
-    
     def mv_crash(self, lag, correlation):
         def crash_together(series):
             if series['default'] == True:
@@ -155,7 +154,7 @@ class scenario_analysis:
 
         mv_crash_returns = self.returns.copy()
         mv_crash_returns['default'] = False
-        for i in range(mv_crash_returns.shape[0]):
+        for i in range(len(self.returns.index)):
             rand = random.random()
             _value = rand
             total = 1
@@ -171,7 +170,7 @@ class scenario_analysis:
             else:
                 mv_crash_returns.iloc[i,-1] = False
         mv_crash_returns = mv_crash_returns.apply(crash_together,axis=1)
-        return mv_crash_returns
+        return mv_crash_returns.drop(['default'], axis=1)
         
 # Helper function
 def create_new_profile(old_profile,_return):
