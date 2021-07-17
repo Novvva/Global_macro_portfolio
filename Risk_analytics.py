@@ -125,8 +125,8 @@ class scenario_analysis:
             rand = random.random()
             if rand < 0.02:
 
-                # have 2% probability that the market will crash by 0.5%
-                all_crash_returns.iloc[i] = self.returns.iloc[i] - 0.005
+                # have 2% probability that the market will crash by 50%
+                all_crash_returns.iloc[i] = self.returns.iloc[i]/2 
 
         return all_crash_returns
 
@@ -145,37 +145,34 @@ class scenario_analysis:
 
         return random_crash_returns
 
-    # Given that yesterday crash, the market has a moving-average effect to crash together.
-    # def mv_crash(self, lag, correlation):
-    #
-    #     def crash_together(series):
-    #         if series['default'] == True:
-    #             series -= 0.005
-    #         return series
-    #
-    #     mv_crash_returns = self.returns.copy()
-    #     _newprofile.factReturns['default'] = False
-    #
-    #     for i in range(x.shape(0)):
-    #         rand = random.random()
-    #         _value = rand
-    #         total = 1
-    #
-    #         # Given the correlation and the lagging coefficient, the default risk is moving average.
-    #         for j in range(max(i-lag,0),i):
-    #             _value += correlation **(i-j) * _newprofile[j,-1]
-    #             total += correlation ** (i-j)
-    #
-    #         # Normalization
-    #         default = _value/total
-    #         if default > 0.95:
-    #             _newprofile[i,-1] = True
-    #         else:
-    #             _newprofile[i,-1] = False
-    #
-    #     _newprofile.factReturns = _newprofile.factReturns.apply(lambda x: crash_together(_newprofile.factReturns),axis=1)
-    #     return _newprofile
+    #Given that yesterday crash, the market has a moving-average effect to crash together.
+    
+    def mv_crash(self, lag, correlation):
+        def crash_together(series):
+            if series['default'] == True:
+                series /= 2
+            return series
 
+        mv_crash_returns = self.returns.copy()
+        mv_crash_returns['default'] = False
+        for i in range(mv_crash_returns.shape[0]):
+            rand = random.random()
+            _value = rand
+            total = 1
+
+            for j in range(max(i-lag,0),i):
+                _value += correlation **(i-j) * mv_crash_returns.iloc[j,-1]
+                total += correlation ** (i-j)
+    
+             # Normalization
+            default = _value/total
+            if default > 0.75:
+                mv_crash_returns.iloc[i,-1] = True
+            else:
+                mv_crash_returns.iloc[i,-1] = False
+        mv_crash_returns = mv_crash_returns.apply(crash_together,axis=1)
+        return mv_crash_returns
+        
 # Helper function
 def create_new_profile(old_profile,_return):
     new_profile = old_profile.copy()

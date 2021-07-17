@@ -237,6 +237,11 @@ class portfolio_optimizer:
 
                 sa_ca = Risk_analytics.scenario_analysis(cad)
                 cad = sa_ca.random_crash()
+            elif scenario == 'MV ETF crash':
+                sa_us = Risk_analytics.scenario_analysis(usd)
+                usd = sa_us.mv_crash(8,0.75)
+                sa_ca = Risk_analytics.scenario_analysis(cad)
+                cad = sa_ca.mv_crash(8,0.75)
 
             # fit optimization based on specified type
             if optimization_type == 'MVO':
@@ -347,8 +352,11 @@ class portfolio_optimizer:
             # reconcil the PnL 50/50 at each semi annual start
             # Note: we don't need to do rebalancing operation. Just reallocate the capital is enough.
             PnL[i] = pd.concat(pnl)
-            USDcapital = capital/2
-            CADcapital = capital/2
+            # Add capital for every half year
+            if i% 6:
+                capital += 10000
+            USDcapital = capital / 2
+            CADcapital = capital / 2
 
             '================================Semi-annual risk metrics access==========================================='
             # Calculate the overall risk
@@ -405,5 +413,17 @@ class portfolio_optimizer:
         drawdown = (ts - previous_peaks) / previous_peaks
 
         max_drawdown = f'{drawdown.min()*100}%'
+        # Sharpe ratio
+        _sharpe = (PnL/initial_capital).subtract(riskfree['RFR'],axis=0).mean() *initial_capital/PnL.std() * np.sqrt(PnL.shape[0])
+        
+        # Final weights
+        _dict = {}
+        for index,etf in enumerate(top_cor[len(top_cor)]):
+            if index < cutoff:
+                _dict[etf] = usdweights[index]
+            else:
+                _dict[etf] = cadweights[index-cutoff]
+        _finalweights = pd.DataFrame.from_dict(_dict,orient='index')
+        _finalweights.rename(columns={0: "final_weights"},inplace = True)
 
-        return dollar_full_portfolio.fillna(0), PnL, USD_risk_profile, CAD_risk_profile, overall_risk_profile, max_drawdown
+        return dollar_full_portfolio.fillna(0),PnL, USD_risk_profile, CAD_risk_profile, overall_risk_profile, max_drawdown,_sharpe,_finalweights
