@@ -137,10 +137,11 @@ class vol_surface:
         return int_lin(self.terms,self.forwards,tenor)
 
 # Strategy to get series of P&L and sensitivities 
-# Inputs series of: Vol_data(spot,fwds,ATM,RR,BF), Risk-Free rete, start-date, maturity date, Bid-offer spread,...
-# ...,strategy (integer from 1 to 5), available USD cash for buying options
+# Inputs series of: Vol_data(spot,fwds,ATM,RR,BF), Risk-Free, start-date, maturity date, Bid-offer spread,...
+# ...,strategy (integer from 2 to 4), 2 is a 45-delta put and 4 is 45-delta call,
+#...available USD cash for buying options
 # OUTPUT: DataFrame with option's market value, strategy pnl, options sensitivies (delta, gamma, vega, theta) 
-class performe:
+class performe2:
     def __init__(self, vol_data, rfr, start_date, end_date, bid_offer_spread, strategy, initial_cash):
         self.start = pd.to_datetime(start_date)
         self.end = pd.to_datetime(end_date)
@@ -165,21 +166,21 @@ class performe:
         self.vol_0 = vol_surface(v0[0],v0[1],v0[2],v0[3],v0[4],v0[5],v0[6],v0[7],v0[8],v0[9],v0[10],\
                                    v0[11],v0[12])
         self.spot = v0[0]
-        if strategy == 1: #Put spread with strikes delta_call 60 to delta_call 90 
-            self.strikes = [self.vol_0.get_strike(70,self.tenor),self.vol_0.get_strike(80,self.tenor)]
+        if strategy == 1: #40-delta put
+            self.strike = self.vol_0.get_strike(60,self.tenor)
             self.type = 'Put'
-        elif strategy == 2: #Put spread with strikes delta_call 50 to delta_call 80
-            self.strikes = [self.vol_0.get_strike(60,self.tenor),self.vol_0.get_strike(70,self.tenor)]
+        elif strategy == 2: #45-delta put
+            self.strike = self.vol_0.get_strike(55,self.tenor)
             self.type = 'Put'
         elif strategy == 3: # Do nothing
-            self.strikes = [0,0]
-        elif strategy == 4: #Call spread with strikes delta_call 50 to delta_call 20
-            self.strikes = [self.vol_0.get_strike(40,self.tenor),self.vol_0.get_strike(30,self.tenor)]
+            self.strike = 0
+        elif strategy == 4: #45-delta call
+            self.strike = self.vol_0.get_strike(55,self.tenor)
             self.type = 'Call'
-        elif strategy == 5: #Call spread with strikes delta_call 40 to delta_call 10
-            self.strikes = [self.vol_0.get_strike(30,self.tenor),self.vol_0.get_strike(20,self.tenor)]
+        elif strategy == 5: #40-delta call
+            self.strike = self.vol_0.get_strike(50,self.tenor)
             self.type = 'Call'
-        # Get initial interest rates (Local & foreign) (PUT SOME CONDITION FOR WHEN USD IS LOCAL????)
+        # Get initial interest rates (Local & foreign) 
         rfr0 = self.rfr[0]
         fwd0 = self.vol_0.get_forward(self.tenor)
         # if USD rate is the foreign currency
@@ -194,11 +195,9 @@ class performe:
             self.premium = 0
             self.notional = 0 
         else:
-            v1 = self.vol_0.get_vol(self.strikes[0],self.tenor)
-            v2 = self.vol_0.get_vol(self.strikes[1],self.tenor)
-            self.opt1 = option_val(self.type, v0[0], self.strikes[0], self.tenor, rl0, rf0, v1 + self.bos/100)
-            self.opt2 = option_val(self.type, v0[0], self.strikes[1], self.tenor, rl0, rf0, v2) 
-            self.premium = (self.opt1.price() - self.opt2.price())/ v0[0] # Premium in strong currency with 1 unit of notional
+            v1 = self.vol_0.get_vol(self.strike,self.tenor)
+            self.opt1 = option_val(self.type, v0[0], self.strike, self.tenor, rl0, rf0, v1 + self.bos/100)
+            self.premium = self.opt1.price()/ v0[0] # Premium in strong currency with 1 unit of notional
             if self.aux == 0: # Convert cash to strong currency if its not in strong currency
                 self.cash = self.cash / v0[0] 
             self.notional = self.cash / self.premium # Its in strong currency 
@@ -208,7 +207,8 @@ class performe:
         pnl = pd.DataFrame()
         pnl['DATE']=pd.to_datetime(self.dates)
         pnl.set_index('DATE',inplace=True)
-        pnl['borrow_rate'] = self.rfr + .01
+        # We borrow at RFR plus 100  bps
+        pnl['borrow_rate'] = self.rfr + .0010 
         pnl['spot'] = self.spot
         if self.strategy == 3:
             pnl[['mv','premium',self.id,'delta','gamma','vega','theta']] = 0
@@ -228,10 +228,10 @@ class performe:
             else: 
                 pnl['pnl'] = pnl['mv'] - pnl['premium'] / self.spot
             # Create space fo the greeks 
-            pnl['delta'] = (self.opt1.delta() - self.opt2.delta()) * self.notional 
-            pnl['gamma'] = (self.opt1.gamma() - self.opt2.gamma()) * self.notional 
-            pnl ['vega'] = (self.opt1.vega() - self.opt2.vega()) * self.notional * self.spot
-            pnl ['theta'] = (self.opt1.theta() - self.opt2.theta()) * self.notional * self.spot
+            pnl['delta'] = self.opt1.delta() * self.notional 
+            pnl['gamma'] = self.opt1.gamma() * np.abs(self.opt1.delta())* self.notional 
+            pnl ['vega'] = self.opt1.vega() * self.notional / self.spot
+            pnl ['theta'] = self.opt1.theta() * self.notional / self.spot
             for i in range(self.length-1):
                 # Calculate day-count fraction for premium accrual 
                 dcf = (self.dates[i+1]-self.dates[i]).days /365
@@ -241,7 +241,7 @@ class performe:
                 v0 = [self.vol.iloc[i+1][x] for x in range(13)]
                 vol = vol_surface(v0[0],v0[1],v0[2],v0[3],v0[4],v0[5],v0[6],v0[7],v0[8],v0[9],v0[10],\
                                        v0[11],v0[12])
-                # Get spot rate (DELETE)
+                # Get spot rate
                 pnl['spot'].iloc[i+1] = v0[0]
                 # Get new interest rates 
                 rfr = self.rfr[i+1]
@@ -253,18 +253,17 @@ class performe:
                     r_f = 0
                     r_l = 0
                 # Calculate value of strategy 
-                opt1 = option_val(self.type, v0[0], self.strikes[0], new_tenor, r_l, r_f, vol.get_vol(self.strikes[0],new_tenor))
-                opt2 = option_val(self.type, v0[0], self.strikes[1], new_tenor, r_l, r_f, vol.get_vol(self.strikes[1],new_tenor))
-                pnl['mv'].iloc[i+1] = (opt1.price() - opt2.price()) * self.notional / v0[0] # Check this spot is not
-                #i
+                opt1 = option_val(self.type, v0[0], self.strike, new_tenor, r_l, r_f, vol.get_vol(self.strike,new_tenor))
+                pnl['mv'].iloc[i+1] = opt1.price() * self.notional / v0[0] # In strong currency
+                #
                 if self.aux == 1:
                     pnl['pnl'].iloc[i+1] = pnl['mv'].iloc[i+1] - pnl['premium'].iloc[i+1]
                 else:
                     pnl['pnl'].iloc[i+1] = pnl['mv'].iloc[i+1] - pnl['premium'].iloc[i+1] / v0[0]
-                pnl['delta'].iloc[i+1] = (opt1.delta() - opt2.delta()) * self.notional # its in strong currrency
-                pnl['gamma'].iloc[i+1] = (opt1.gamma() - opt2.gamma()) * self.notional # in strong currency 
-                pnl ['vega'].iloc[i+1] = (opt1.vega() - opt2.vega()) * self.notional * v0[0] # flipped to strong currency 
-                pnl ['theta'].iloc[i+1] = (opt1.theta() - opt2.theta()) * self.notional * v0[0]# flipped to strong week currency
+                pnl['delta'].iloc[i+1] = opt1.delta() * self.notional # its in strong currrency
+                pnl['gamma'].iloc[i+1] = opt1.gamma() * np.abs(opt1.delta()) * self.notional # in strong currency 
+                pnl ['vega'].iloc[i+1] = opt1.vega() * self.notional / v0[0] # flipped to strong currency 
+                pnl ['theta'].iloc[i+1] = opt1.theta() * self.notional / v0[0]# flipped to strong week currency
             if self.aux == 0:
                 pnl['mv'] = pnl['mv'] * pnl['spot']
                 pnl['pnl'] = pnl['pnl'] * pnl['spot']
@@ -276,6 +275,7 @@ class performe:
                           self.id+'_delta',self.id+'_gamma',self.id+'_vega',self.id+'_theta']
             pnl.drop(['borrow_rate'], axis=1,inplace=True)
             return pnl
+
         
 # Process vol_data
 allbase = pd.read_csv('data/vol_data.csv')
@@ -353,4 +353,3 @@ def calibration_aux(forward, strike, tau, vol, atm, rr, bf):
     delta_aux = get_delta(forward,strike,tau,vol)
     vol_aux = vol_parabolic(delta_aux*100,atm,rr,bf)
     return vol - vol_aux
-
