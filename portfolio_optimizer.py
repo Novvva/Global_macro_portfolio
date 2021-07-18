@@ -376,15 +376,15 @@ class portfolio_optimizer:
             _totalCVaR95 = _USDCVaR95 + _CADCVaR95
             _totalCVaR99 = _USDCVaR99 + _CADCVaR99
 
-            _USDriskprofile = {'Period': i, 'VaR 95%': [_USDVaR95], 'VaR 99%': [_USDVaR99],
+            _USDriskprofile = {'Period': usdreturns.index[-1], 'VaR 95%': [_USDVaR95], 'VaR 99%': [_USDVaR99],
                                'CVaR 95%': [_USDCVaR95], 'CVaR 99%': [_USDCVaR99],
                                'Sharpe Ratio': [_USDrisk.sharpe_ratio()], 'Max_drawdown': [_USDrisk.max_drawdown()]}
 
-            _CADriskprofile = {'Period': i, 'VaR 95%': [_CADVaR95], 'VaR 99%': [_CADVaR99],
+            _CADriskprofile = {'Period': usdreturns.index[-1], 'VaR 95%': [_CADVaR95], 'VaR 99%': [_CADVaR99],
                                'CVaR 95%': [_CADCVaR95], 'CVaR 99%': [_CADCVaR99],
                                'Sharpe Ratio': [_CADrisk.sharpe_ratio()], 'Max_drawdown': [_CADrisk.max_drawdown()]}
 
-            _overallriskprofile = {'Period': i, 'VaR 95%': [_USDVaR95 + _CADVaR95],
+            _overallriskprofile = {'Period': usdreturns.index[-1], 'VaR 95%': [_USDVaR95 + _CADVaR95],
                                    'VaR 99%': [_USDVaR99 + _CADVaR99],
                                    'CVaR 95%': [_USDCVaR95 + _CADCVaR95],
                                    'CVaR 99%': [_USDCVaR99 + _CADCVaR99]}

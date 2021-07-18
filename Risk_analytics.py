@@ -178,5 +178,3 @@ def create_new_profile(old_profile,_return):
     new_profile.factReturns = _return
     return new_profile
 
-class option_risk:
-    pass
