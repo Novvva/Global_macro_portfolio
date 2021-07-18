@@ -72,10 +72,12 @@ def load_data(path_1, path_2, path_3):
         messagebox.showinfo(title='Warning', message='Data Import Failed')
 
 def back_test(initial_capital, freq, cutoff, optimization, start_date):
-    global dollar_full_portfolio_bt, PnL_bt, usdrisk_bt, cadrisk_bt, overallrisk_bt, max_drawdown_bt, SR_bt, w_bt, optimization_type
+    global dollar_full_portfolio_bt, PnL_bt, usdrisk_bt, cadrisk_bt, overallrisk_bt, max_drawdown_bt, SR_bt, w_bt, optimization_type, f, cut
     try:
         metrics.delete(1.0, END)
         optimization_type = optimization
+        f = freq
+        cut = cutoff
 
         start_date = datetime.strptime(str(start_date), '%m/%d/%Y')
         start_date = start_date + relativedelta(months=-1)
@@ -109,10 +111,12 @@ def back_test(initial_capital, freq, cutoff, optimization, start_date):
         messagebox.showinfo(title='Warning', message='Portfolio back-test Failed')
 
 def portfolio_perform(initial_capital, freq, cutoff, optimization, start_date):
-    global dollar_full_portfolio_p, PnL_p, usdrisk_p, cadrisk_p, overallrisk_p, max_drawdown_p, SR_p, w_p, optimization_type
+    global dollar_full_portfolio_p, PnL_p, usdrisk_p, cadrisk_p, overallrisk_p, max_drawdown_p, SR_p, w_p, optimization_type, f, cut
     try:
         metrics_1.delete(1.0, END)
         optimization_type = optimization
+        f = freq
+        cut = cutoff
 
         start_date = datetime.strptime(str(start_date), '%m/%d/%Y')
         start_date = start_date + relativedelta(months=-1)
@@ -148,7 +152,7 @@ def portfolio_perform(initial_capital, freq, cutoff, optimization, start_date):
         messagebox.showinfo(title='Warning', message='Portfolio optimization Failed')
 
 def get_metrics_bt():
-    m = 'Your optimal portfolio has Sharpe Ratio of ' + str(SR_bt) + '\n Max drawdown of ' + str(max_drawdown_bt)
+    m = 'Your back tested portfolio using ' + optimization_type + ' with ' + f + ' rebalancing frequency and having ' + str(cut) + ' US and CA ETFs has Sharpe Ratio of ' + str(SR_bt) + ',\nMax drawdown of ' + str(max_drawdown_bt)
     metrics.insert(END, m)
 
 def plot_PnL_bt(start_date):
@@ -182,7 +186,7 @@ def plot_pie_bt():
     messagebox.showinfo(title='Success', message='Pie chart saved!')
 
 def get_metrics_p():
-    m = 'Your optimal portfolio has Sharpe Ratio of ' + str(SR_p) + '\n Max drawdown of ' + str(max_drawdown_p)
+    m = 'Your optimal portfolio using ' + optimization_type + ' with ' + f + ' rebalancing frequency and having ' + str(cut) + ' US and CA ETFs has Sharpe Ratio of ' + str(SR_p) + ',\nMax drawdown of ' + str(max_drawdown_p)
     metrics_1.insert(END, m)
 
 
