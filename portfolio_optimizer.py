@@ -405,9 +405,9 @@ class portfolio_optimizer:
         overall_risk_profile.set_index('Period', inplace=True)
 
         # max drawdown calculation:
-        ts = PnL.cumsum()
-        previous_peaks = ts.max()
-        drawdown = (ts - previous_peaks) / previous_peaks
+        ts = initial_capital + PnL.cumsum()
+        previous_peak = ts.cummax()
+        drawdown = (ts - previous_peak) / previous_peak
 
         max_drawdown = f'{round(drawdown.min(), 4)*100}%'
 
