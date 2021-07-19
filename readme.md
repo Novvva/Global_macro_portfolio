@@ -1,6 +1,3 @@
-{\rtf1\ansi\ansicpg1252\cocoartf2580
-\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 ArialMT;\f1\froman\fcharset0 Times-Roman;\f2\fswiss\fcharset0 Helvetica;
-\f3\fswiss\fcharset0 Arial-BoldMT;}
 # File List:
 
 * CAN_ETFs.csv - List of Canadian ETFs used for our algorithm
