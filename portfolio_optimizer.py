@@ -21,7 +21,7 @@ class portfolio_optimizer:
 
         self.semiannual = returns
 
-    def portfolio_simulator(self, initial_capital, riskfree, top_cor, cutoff, VaRcutoff, optimization_type,
+    def portfolio_simulator(self, initial_capital, riskfree, top_cor, cutoff, VaRcutoff, optimization_type, leverage,
                             benchmark=None, scenario=None):
         """
         :param initial_capital: the assumed initial capital amount for our portfolio.
@@ -197,6 +197,19 @@ class portfolio_optimizer:
         CADcapital = initial_capital / 2
         capital = USDcapital + CADcapital
 
+        # adding option pnl:
+        option_pnl = pd.read_excel('option results/option_pnl.xlsx')
+        option_pnl['Date'] = pd.to_datetime(option_pnl['Date'])
+        option_pnl = option_pnl.set_index('Date')
+
+        if leverage == 10:
+            r = pd.read_csv('option results/risk_10.csv')
+            r = r.drop(['Date'], axis=1).reset_index(drop=True)
+
+        elif leverage == 20:
+            r = pd.read_csv('option results/risk_20.csv')
+            r = r.drop(['Date'], axis=1)
+
         # dataframes to store the portfolio info
         dollar_full_portfolio = pd.DataFrame()
         PnL = {}
@@ -346,6 +359,13 @@ class portfolio_optimizer:
                 CADcapital += (cadpnl[j].cumsum()[-1] - cadpnl[j].cumsum()[0]) * 0.9995
                 capital += (pnl[j].cumsum()[-1] - pnl[j].cumsum()[0]) * 0.9995
 
+            if leverage == 0:
+                pnl = pnl
+            elif leverage == 10:
+                pnl[len(monthly_usdreturns)-1].iloc[-1] += option_pnl.iloc[i-1, 0]
+            elif leverage == 20:
+                pnl[len(monthly_usdreturns)-1].iloc[-1] += option_pnl.iloc[i-1, 1]
+
             # reconcil the PnL 50/50 at each semi annual start
             # Note: we don't need to do rebalancing operation. Just reallocate the capital is enough.
             PnL[i] = pd.concat(pnl)
@@ -376,18 +396,23 @@ class portfolio_optimizer:
             _totalCVaR95 = _USDCVaR95 + _CADCVaR95
             _totalCVaR99 = _USDCVaR99 + _CADCVaR99
 
-            _USDriskprofile = {'Period': i, 'VaR 95%': [_USDVaR95], 'VaR 99%': [_USDVaR99],
+            _USDriskprofile = {'Period': usdreturns.index[0], 'VaR 95%': [_USDVaR95], 'VaR 99%': [_USDVaR99],
                                'CVaR 95%': [_USDCVaR95], 'CVaR 99%': [_USDCVaR99],
                                'Sharpe Ratio': [_USDrisk.sharpe_ratio()], 'Max_drawdown': [_USDrisk.max_drawdown()]}
 
-            _CADriskprofile = {'Period': i, 'VaR 95%': [_CADVaR95], 'VaR 99%': [_CADVaR99],
+            _CADriskprofile = {'Period': usdreturns.index[-1], 'VaR 95%': [_CADVaR95], 'VaR 99%': [_CADVaR99],
                                'CVaR 95%': [_CADCVaR95], 'CVaR 99%': [_CADCVaR99],
                                'Sharpe Ratio': [_CADrisk.sharpe_ratio()], 'Max_drawdown': [_CADrisk.max_drawdown()]}
-
-            _overallriskprofile = {'Period': i, 'VaR 95%': [_USDVaR95 + _CADVaR95],
-                                   'VaR 99%': [_USDVaR99 + _CADVaR99],
-                                   'CVaR 95%': [_USDCVaR95 + _CADCVaR95],
-                                   'CVaR 99%': [_USDCVaR99 + _CADCVaR99]}
+            if leverage == 0:
+                _overallriskprofile = {'Period': usdreturns.index[-1], 'VaR95': [_USDVaR95 + _CADVaR95],
+                                       'CVaR95': [_USDCVaR95 + _CADCVaR95],
+                                       'VaR99': [_USDVaR99 + _CADVaR99],
+                                       'CVaR99': [_USDCVaR99 + _CADCVaR99]}
+            else:
+                _overallriskprofile = {'Period': usdreturns.index[-1], 'VaR95': [_USDVaR95 + _CADVaR95 + r.iloc[i-1, 0]],
+                                       'CVaR95': [_USDCVaR95 + _CADCVaR95 + r.iloc[i-1, 1]],
+                                       'VaR99': [_USDVaR99 + _CADVaR99 + r.iloc[i-1, 2]],
+                                       'CVaR99': [_USDCVaR99 + _CADCVaR99 + r.iloc[i-1, 3]]}
 
             # store risk metrics into dataframes
             _USDriskprofile = pd.DataFrame.from_dict(_USDriskprofile)
