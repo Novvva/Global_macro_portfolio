@@ -1,3 +1,7 @@
+# MMF Risk Management Lab:
+![image](https://user-images.githubusercontent.com/63087922/126183585-14dbd673-5d69-47f6-b991-708fd637e24d.png)
+
+
 # File List:
 
 * CAN_ETFs.csv - List of Canadian ETFs used for our algorithm
