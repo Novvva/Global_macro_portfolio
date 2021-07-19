@@ -73,53 +73,56 @@ def load_data(path_1, path_2, path_3):
 
 def back_test(initial_capital, freq, cutoff, optimization, start_date):
     global dollar_full_portfolio_bt, PnL_bt, usdrisk_bt, cadrisk_bt, overallrisk_bt, max_drawdown_bt, SR_bt, w_bt, optimization_type, f, cut
-    try:
-        metrics.delete(1.0, END)
-        optimization_type = optimization
-        f = freq
-        cut = cutoff
+    # try:
+    metrics.delete(1.0, END)
+    optimization_type = optimization
+    f = freq
+    cut = cutoff
 
-        start_date = datetime.strptime(str(start_date), '%m/%d/%Y')
-        start_date = start_date + relativedelta(months=-1)
-        start_date = start_date.strftime('%m/%d/%Y')
+    # Risk mapping Parameter
+    VaRcutoff = {'VaR95': 5000, 'VaR99': 5800, 'CVaR95': 5700, 'CVaR99': 5400}
 
-        # Risk mapping Parameter
-        VaRcutoff = {'VaR95': 5000, 'VaR99': 5800, 'CVaR95': 5700, 'CVaR99': 5400}
-
-        # Back-testing
-        rets_bt = rets[rets.index <= start_date]
-        dates_to_split = pd.date_range(rets_bt.index[0], rets_bt.index[-1], freq=freq)
-        # Split on these dates
-        semiannual_bt = {}
-        for i in range(len(dates_to_split) - 1):
-            semiannual_bt[i] = rets_bt[dates_to_split[i]:dates_to_split[i + 1]]
-        top_bt = {}
-        for i in range(1, len(semiannual_bt)):
-            corrs = ((1 + semiannual_bt[i - 1]).cumprod() - 1).iloc[-1]
-            top_bt[i] = [x for x in corrs.sort_values(ascending=False, axis=0).index if "USA_" in x][:int(cutoff)]
-            top_bt[i] += [x for x in corrs.sort_values(ascending=False, axis=0).index if "CAN_" in x][:int(cutoff)]
-
-        opt_bt = portfolio_optimizer(semiannual_bt)
-        if optimization == 'MVO':
-            dollar_full_portfolio_bt, PnL_bt, usdrisk_bt, cadrisk_bt, overallrisk_bt, max_drawdown_bt, SR_bt, w_bt = opt_bt.portfolio_simulator(int(initial_capital), riskfree, top_bt, int(cutoff), VaRcutoff, optimization, benchmark_excess)
-        else:
-            dollar_full_portfolio_bt, PnL_bt, usdrisk_bt, cadrisk_bt, overallrisk_bt, max_drawdown_bt, SR_bt, w_bt = opt_bt.portfolio_simulator(int(initial_capital), riskfree, top_bt, int(cutoff), VaRcutoff, optimization)
+    # Back-testing
+    rets_bt = rets[rets.index <= start_date]
+    dates_to_split = pd.date_range(rets_bt.index[0], rets_bt.index[-1], freq=freq)
+    # Split on these dates
+    semiannual_bt = {}
+    for i in range(len(dates_to_split) - 1):
+        semiannual_bt[i] = rets_bt[dates_to_split[i]:dates_to_split[i + 1]]
+    top_bt = {}
+    for i in range(1, len(semiannual_bt)):
+        corrs = ((1 + semiannual_bt[i - 1]).cumprod() - 1).iloc[-1]
+        top_bt[i] = [x for x in corrs.sort_values(ascending=False, axis=0).index if "USA_" in x][:int(cutoff)]
+        top_bt[i] += [x for x in corrs.sort_values(ascending=False, axis=0).index if "CAN_" in x][:int(cutoff)]
+    opt_bt = portfolio_optimizer(semiannual_bt)
+    if optimization == 'MVO':
+        dollar_full_portfolio_bt, PnL_bt, usdrisk_bt, cadrisk_bt, overallrisk_bt, max_drawdown_bt, SR_bt, w_bt = opt_bt.portfolio_simulator(int(initial_capital), riskfree, top_bt, int(cutoff), VaRcutoff, optimization, 0, benchmark_excess)
+    else:
+        dollar_full_portfolio_bt, PnL_bt, usdrisk_bt, cadrisk_bt, overallrisk_bt, max_drawdown_bt, SR_bt, w_bt = opt_bt.portfolio_simulator(int(initial_capital), riskfree, top_bt, int(cutoff), VaRcutoff, optimization, 0)
 
         messagebox.showinfo(title='Success', message='Portfolio back-tested!')
 
-    except:
-        messagebox.showinfo(title='Warning', message='Portfolio back-test Failed')
+    # except:
+    #     messagebox.showinfo(title='Warning', message='Portfolio back-test Failed')
 
-def portfolio_perform(initial_capital, freq, cutoff, optimization, start_date):
-    global dollar_full_portfolio_p, PnL_p, usdrisk_p, cadrisk_p, overallrisk_p, max_drawdown_p, SR_p, w_p, optimization_type, f, cut
+def portfolio_perform(initial_capital, freq, cutoff, optimization, start_date, level, name):
+    global dollar_full_portfolio_p, PnL_p, usdrisk_p, cadrisk_p, overallrisk_p, max_drawdown_p, SR_p, w_p, optimization_type, f, cut, leverage, n
     try:
         metrics_1.delete(1.0, END)
         optimization_type = optimization
         f = freq
         cut = cutoff
+        n = str(name)
+
+        if level == 'conservative':
+            leverage = 0
+        elif level == 'balanced':
+            leverage = 10
+        else:
+            leverage = 20
 
         start_date = datetime.strptime(str(start_date), '%m/%d/%Y')
-        start_date = start_date + relativedelta(months=-1)
+        start_date = start_date + relativedelta(months=-2)
         start_date = start_date.strftime('%m/%d/%Y')
 
         # Risk mapping Parameter
@@ -141,10 +144,10 @@ def portfolio_perform(initial_capital, freq, cutoff, optimization, start_date):
         opt_p = portfolio_optimizer(semiannual_p)
         if optimization == 'MVO':
             dollar_full_portfolio_p, PnL_p, usdrisk_p, cadrisk_p, overallrisk_p, max_drawdown_p, SR_p, w_p = opt_p.portfolio_simulator(
-                int(initial_capital), riskfree, top_p, int(cutoff), VaRcutoff, optimization, benchmark_excess)
+                int(initial_capital), riskfree, top_p, int(cutoff), VaRcutoff, optimization, leverage, benchmark_excess)
         else:
             dollar_full_portfolio_p, PnL_p, usdrisk_p, cadrisk_p, overallrisk_p, max_drawdown_p, SR_p, w_p = opt_p.portfolio_simulator(
-                int(initial_capital), riskfree, top_p, int(cutoff), VaRcutoff, optimization)
+                int(initial_capital), riskfree, top_p, int(cutoff), VaRcutoff, optimization, leverage)
 
         messagebox.showinfo(title='Success', message='Portfolio optimized!')
 
@@ -186,7 +189,7 @@ def plot_pie_bt():
     messagebox.showinfo(title='Success', message='Pie chart saved!')
 
 def get_metrics_p():
-    m = 'Your optimal portfolio using ' + optimization_type + ' with ' + f + ' rebalancing frequency and having ' + str(cut) + ' US and CA ETFs has Sharpe Ratio of ' + str(SR_p) + ',\nMax drawdown of ' + str(max_drawdown_p)
+    m = 'Hi, ' + n + '. Your optimal portfolio using ' + optimization_type + ' with ' + f + ' rebalancing frequency and having ' + str(cut) + ' US and CA ETFs and ' + str(leverage) + '% leverage of options has Sharpe Ratio of ' + str(SR_p) + ',\nMax drawdown of ' + str(max_drawdown_p) + '.'
     metrics_1.insert(END, m)
 
 
@@ -234,33 +237,38 @@ l = Label(window, text='Welcome to Global Macro Portfolio Robo Advisor', bg='lig
 l.pack()
 
 Label(window, text='Please load all the data:', width=30,
-      font=('calibre', 12, 'bold')).place(bordermode=OUTSIDE, x=5, y=50)
+      font=('calibre', 12, 'bold')).place(bordermode=OUTSIDE, x=205, y=50)
 
 path1 = StringVar()
 path2 = StringVar()
 path3 = StringVar()
 
-entryPath1 = Entry(window, width=20, textvariable=path1)
-entryPath1.place(bordermode=OUTSIDE, x=5, y=80)
+Label(window, text='Please enter your name:', width=20,
+      font=('calibre', 12, 'bold')).place(bordermode=OUTSIDE, x=5, y=50)
+e = Entry(window, width=15, textvariable=StringVar())
+e.place(bordermode=OUTSIDE, x=5, y=80)
+
+entryPath1 = Entry(window, width=10, textvariable=path1)
+entryPath1.place(bordermode=OUTSIDE, x=205, y=80)
 
 button1 = Button(window, width=10, text="Select return", font=('calibre', 12, 'bold'), command=selectPath1)
-button1.place(bordermode=OUTSIDE, x=5, y=110)
+button1.place(bordermode=OUTSIDE, x=205, y=110)
 
-entryPath2 = Entry(window, width=25, textvariable=path2)
-entryPath2.place(bordermode=OUTSIDE, x=200, y=80)
+entryPath2 = Entry(window, width=15, textvariable=path2)
+entryPath2.place(bordermode=OUTSIDE, x=320, y=80)
 
 button3 = Button(window, width=15, text="Select risk free rate", font=('calibre', 12, 'bold'), command=selectPath2)
-button3.place(bordermode=OUTSIDE, x=200, y=110)
+button3.place(bordermode=OUTSIDE, x=320, y=110)
 
-entryPath3 = Entry(window, width=25, textvariable=path3)
-entryPath3.place(bordermode=OUTSIDE, x=440, y=80)
+entryPath3 = Entry(window, width=15, textvariable=path3)
+entryPath3.place(bordermode=OUTSIDE, x=480, y=80)
 
 button5 = Button(window, width=15, text="Select benchmark", font=('calibre', 12, 'bold'), command=selectPath3)
-button5.place(bordermode=OUTSIDE, x=440, y=110)
+button5.place(bordermode=OUTSIDE, x=480, y=110)
 
 button6 = Button(window, width=10, text="Load data", font=('calibre', 12, 'bold'),
                  command=lambda: load_data(entryPath1.get(), entryPath2.get(), entryPath3.get()))
-button6.place(bordermode=OUTSIDE, x=700, y=85)
+button6.place(bordermode=OUTSIDE, x=650, y=85)
 
 Label(window, text='Please enter your initial capital:', width=25,
       font=('calibre', 12, 'bold')).place(bordermode=OUTSIDE, x=5, y=160)
@@ -292,7 +300,7 @@ entry2.place(bordermode=OUTSIDE, x=5, y=260)
 
 Label(window, text='Please select your risk appetite', width=25,
       font=('calibre', 12, 'bold')).place(bordermode=OUTSIDE, x=300, y=230)
-combobox5 = Combobox(window, values=['Risk averse', 'Moderate', 'Risk Seeking'], width=10)
+combobox5 = Combobox(window, values=['conservative', 'balanced', 'aggressive'], width=20)
 combobox5.current(0)
 combobox5.place(bordermode=OUTSIDE, x=300, y=260)
 
@@ -301,7 +309,7 @@ button8 = Button(window, width=25, text="Hit me to back-test your portfolio!",
 button8.place(bordermode=OUTSIDE, x=600, y=230)
 
 button9 = Button(window, width=25, text="Hit me to optimize your portfolio!",
-                 font=('calibre', 12, 'bold'), command=lambda: portfolio_perform(entry1.get(), combobox3.get(), combobox1.get(), combobox2.get(), entry2.get()))
+                 font=('calibre', 12, 'bold'), command=lambda: portfolio_perform(entry1.get(), combobox3.get(), combobox1.get(), combobox2.get(), entry2.get(), combobox5.get(), e.get()))
 button9.place(bordermode=OUTSIDE, x=600, y=260)
 
 metrics = Text(window, height=10, width=25)
@@ -313,10 +321,10 @@ Display.place(bordermode=OUTSIDE, x=5, y=300)
 Plot_button = Button(window, height=2, width=25, text="Plot back-testing PnL v.s. Benchmark", font=('calibre', 12, 'bold'), command=lambda: plot_PnL_bt(entry2.get()))
 Plot_button.place(bordermode=OUTSIDE, x=5, y=350)
 
-Plot_button_1 = Button(window, height=2, width=25, text="Plot Pie chart", font=('calibre', 12, 'bold'), command=plot_pie_bt)
+Plot_button_1 = Button(window, height=2, width=25, text="Plot back-testing Pie chart", font=('calibre', 12, 'bold'), command=plot_pie_bt)
 Plot_button_1.place(bordermode=OUTSIDE, x=5, y=400)
 
-metrics_1 = Text(window, height=10, width=25)
+metrics_1 = Text(window, height=10, width=38)
 metrics_1.place(bordermode=OUTSIDE, x=735, y=300)
 
 Display_1 = Button(window, height=2, width=30, text="Show your optimized portfolio metrics", font=('calibre', 12, 'bold'), command=get_metrics_p)
@@ -325,7 +333,7 @@ Display_1.place(bordermode=OUTSIDE, x=450, y=300)
 Plot_button_2 = Button(window, height=2, width=30, text="Plot your portfolio PnL v.s. Benchmark", font=('calibre', 12, 'bold'), command=lambda: plot_PnL_p(entry2.get()))
 Plot_button_2.place(bordermode=OUTSIDE, x=450, y=350)
 
-Plot_button_3 = Button(window, height=2, width=25, text="Plot Pie chart", font=('calibre', 12, 'bold'), command=plot_pie_p)
+Plot_button_3 = Button(window, height=2, width=30, text="Plot your portfolio Pie chart", font=('calibre', 12, 'bold'), command=plot_pie_p)
 Plot_button_3.place(bordermode=OUTSIDE, x=450, y=400)
 
 window.mainloop()
